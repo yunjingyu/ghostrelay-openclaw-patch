@@ -5,6 +5,7 @@ from pathlib import Path
 SETTINGS_PATH = Path(__file__).parent / "settings.json"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PROFILE_ID_RE = re.compile(r"[^a-z0-9_-]+")
+PROVIDER_ID_RE = re.compile(r"[^a-z0-9_-]+")
 
 
 def find_default_vertex_sa() -> str:
@@ -27,6 +28,14 @@ def normalize_profile_id(value: str | None) -> str:
 
 def normalize_agent_id(value: str | None, fallback: str = "main") -> str:
     return normalize_profile_id(value or fallback)
+
+
+def normalize_provider_id(value: str | None, fallback: str = "openai") -> str:
+    raw = str(value or "").strip().lower()
+    raw = PROVIDER_ID_RE.sub("-", raw).strip("-")
+    if not raw:
+        return str(fallback or "openai").strip().lower() or "openai"
+    return raw
 
 
 def default_workspace_for_profile(profile_id: str) -> str:
@@ -77,6 +86,14 @@ def default_profile(profile_id: str = "main") -> dict:
             "injectionLevel": "medium",
             "historyTurns": 6,
         },
+        "apiProvider": {
+            "providerId": "openai",
+            "baseUrl": "https://api.openai.com/v1",
+            "apiKey": "",
+            "modelName": "gpt-4.1-mini",
+            "apiFormat": "openai-completions",
+            "contextWindow": 32768,
+        },
         "brainBridge": {
             "profileId": normalized,
             "model": "google-vertex/gemini-2.0-flash",
@@ -115,6 +132,8 @@ def _merge_profile(base_profile: dict, payload: dict, profile_id: str) -> dict:
         merged["vertex"].update(payload["vertex"])
     if isinstance(payload.get("ollama"), dict):
         merged["ollama"].update(payload["ollama"])
+    if isinstance(payload.get("apiProvider"), dict):
+        merged["apiProvider"].update(payload["apiProvider"])
     if isinstance(payload.get("brainBridge"), dict):
         existing_bridge = merged.get("brainBridge", {})
         if not isinstance(existing_bridge, dict):
@@ -123,7 +142,7 @@ def _merge_profile(base_profile: dict, payload: dict, profile_id: str) -> dict:
         merged["brainBridge"] = existing_bridge
 
     source = str(merged.get("modelSource") or "vertex").strip().lower()
-    merged["modelSource"] = source if source in {"vertex", "ollama"} else "vertex"
+    merged["modelSource"] = source if source in {"vertex", "ollama", "api"} else "vertex"
     tool_mode = str(merged.get("toolMode") or "auto").strip().lower()
     merged["toolMode"] = tool_mode if tool_mode in {"auto", "chat", "agent"} else "auto"
     merged["model"] = str(merged.get("model") or "google-vertex/gemini-2.0-flash").strip()
@@ -136,6 +155,8 @@ def _merge_profile(base_profile: dict, payload: dict, profile_id: str) -> dict:
         merged["vertex"] = default_profile(profile_id)["vertex"]
     if not isinstance(merged.get("ollama"), dict):
         merged["ollama"] = default_profile(profile_id)["ollama"]
+    if not isinstance(merged.get("apiProvider"), dict):
+        merged["apiProvider"] = default_profile(profile_id)["apiProvider"]
     if not isinstance(merged.get("brainBridge"), dict):
         merged["brainBridge"] = default_profile(profile_id)["brainBridge"]
     brain_bridge = merged.get("brainBridge", {})
@@ -171,6 +192,22 @@ def _merge_profile(base_profile: dict, payload: dict, profile_id: str) -> dict:
         except Exception:
             history_turns = 6
         ollama["historyTurns"] = max(1, min(20, history_turns))
+    api_provider = merged.get("apiProvider", {})
+    if isinstance(api_provider, dict):
+        provider_id = normalize_provider_id(str(api_provider.get("providerId") or ""), "openai")
+        api_provider["providerId"] = provider_id
+        api_provider["baseUrl"] = str(api_provider.get("baseUrl") or "https://api.openai.com/v1").strip()
+        api_provider["apiKey"] = str(api_provider.get("apiKey") or "").strip()
+        api_provider["modelName"] = str(api_provider.get("modelName") or "gpt-4.1-mini").strip() or "gpt-4.1-mini"
+        api_format = str(api_provider.get("apiFormat") or "openai-completions").strip().lower()
+        if api_format not in {"openai-completions", "openai-responses", "anthropic-messages"}:
+            api_format = "openai-completions"
+        api_provider["apiFormat"] = api_format
+        try:
+            context_window = int(str(api_provider.get("contextWindow") or "32768").strip())
+        except Exception:
+            context_window = 32768
+        api_provider["contextWindow"] = max(16000, min(262144, context_window))
     return merged
 
 
@@ -193,6 +230,7 @@ def _inflate_active_profile_aliases(settings_root: dict) -> dict:
         "workspace",
         "vertex",
         "ollama",
+        "apiProvider",
         "brainBridge",
     ):
         settings_root[key] = active_profile.get(key)

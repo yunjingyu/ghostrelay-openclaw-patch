@@ -18,6 +18,8 @@ It is designed as a patch-style sidecar, not a replacement for OpenClaw.
 
 - Launcher with gateway controls (`start/stop/restart`) and tray management
 - Ghost Chat with profile-scoped modes: `auto`, `chat`, `agent`
+- Generic API provider mode (`Provider ID` + `Base URL` + `Model` + `API Key`)
+- API presets for common providers (OpenAI/Gemini/Anthropic/OpenRouter/Groq/xAI/LM Studio/vLLM)
 - Companion chat for brain-prep and memory sync (`BRAIN_SUMMARY.md` path)
 - Ollama model manager (list/register/remove models)
 - Editable Persona/Memory/Session/Skills side panels
@@ -58,15 +60,30 @@ start.bat
 - default: minimized + `pythonw`
 - console mode: `start.bat --console`
 
+## Screenshots
+
+| Console | Ghost Chat |
+| --- | --- |
+| ![GhostRelay Console](docs/images/main.png) | ![Ghost Chat](docs/images/ghost_chat.png) |
+
+| Companion | Skills Dashboard |
+| --- | --- |
+| ![Chat Companion](docs/images/chat_companion.png) | ![Skills Dashboard](docs/images/skill_dashboard.png) |
+
+| Ollama Model Manager | System / Tray |
+| --- | --- |
+| ![Ollama Model Manager](docs/images/ollama_consol.png) | ![System Tray](docs/images/system.png) |
+
 ## Status
 
-- Version: `0.4.0-beta.1` (`VERSION`)
+- Version: `0.4.0-beta.2` (`VERSION`)
 - Stage: `Beta`
 - Date baseline: `2026-02-08`
 
 ### Verified
 
 - core Python files compile with `python -m py_compile`
+- settings schema supports `Vertex`, `Ollama`, and generic `OpenAI-compatible API` source modes
 - public bundle script runs successfully
 - bundle includes `LICENSE`/`NOTICE` and excludes private runtime data
 - GitHub repo bootstrap and push path validated

@@ -32,6 +32,7 @@ from settings_store import (
     list_profiles,
     load_settings,
     normalize_agent_id,
+    normalize_provider_id,
     normalize_profile_id,
     save_settings,
 )
@@ -39,6 +40,8 @@ from settings_store import (
 OPENCLAW_MIN_CONTEXT_WINDOW = 16000
 DEFAULT_OLLAMA_CONTEXT_WINDOW = 32768
 MAX_OLLAMA_CONTEXT_WINDOW = 262144
+DEFAULT_API_CONTEXT_WINDOW = 32768
+MAX_API_CONTEXT_WINDOW = 262144
 
 
 def decode_process_output(data: bytes | None) -> str:
@@ -240,6 +243,105 @@ def fetch_ollama_models(base_url: str) -> list[str]:
                 if name:
                     names.append(name)
     return sorted(set(names))
+
+
+def get_openai_models_url(base_url: str) -> str:
+    raw_base = (base_url or "").strip().rstrip("/")
+    if not raw_base:
+        raw_base = "https://api.openai.com/v1"
+    if raw_base.endswith("/models"):
+        return raw_base
+    lowered = raw_base.lower()
+    if lowered.endswith("/openai"):
+        return f"{raw_base}/models"
+    if raw_base.endswith("/v1"):
+        return f"{raw_base}/models"
+    if raw_base.endswith("/v1beta"):
+        return f"{raw_base}/models"
+    return f"{raw_base}/v1/models"
+
+
+def fetch_openai_compatible_models(base_url: str, api_key: str) -> list[str]:
+    import urllib.request
+    import urllib.error
+
+    models_url = get_openai_models_url(base_url)
+    headers = {"Accept": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    req = urllib.request.Request(models_url, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            payload = resp.read().decode("utf-8", errors="ignore")
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode("utf-8", errors="ignore")
+        except Exception:
+            body = str(e)
+        raise RuntimeError(f"HTTP {e.code}: {body.strip() or str(e)}")
+    except Exception as e:
+        raise RuntimeError(str(e))
+
+    data = json.loads(payload or "{}")
+    rows = data.get("data") if isinstance(data, dict) else []
+    model_ids: list[str] = []
+    if isinstance(rows, list):
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            model_id = str(item.get("id") or "").strip()
+            if model_id:
+                model_ids.append(model_id)
+    return sorted(set(model_ids))
+
+
+def get_anthropic_models_url(base_url: str) -> str:
+    raw_base = (base_url or "").strip().rstrip("/")
+    if not raw_base:
+        raw_base = "https://api.anthropic.com/v1"
+    if raw_base.endswith("/models"):
+        return raw_base
+    if raw_base.endswith("/v1"):
+        return f"{raw_base}/models"
+    return f"{raw_base}/v1/models"
+
+
+def fetch_anthropic_models(base_url: str, api_key: str) -> list[str]:
+    import urllib.request
+    import urllib.error
+
+    models_url = get_anthropic_models_url(base_url)
+    headers = {
+        "Accept": "application/json",
+        "x-api-key": str(api_key or "").strip(),
+        "anthropic-version": "2023-06-01",
+    }
+    req = urllib.request.Request(models_url, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            payload = resp.read().decode("utf-8", errors="ignore")
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode("utf-8", errors="ignore")
+        except Exception:
+            body = str(e)
+        raise RuntimeError(f"HTTP {e.code}: {body.strip() or str(e)}")
+    except Exception as e:
+        raise RuntimeError(str(e))
+
+    data = json.loads(payload or "{}")
+    rows = data.get("data") if isinstance(data, dict) else []
+    model_ids: list[str] = []
+    if isinstance(rows, list):
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            model_id = str(item.get("id") or "").strip()
+            if model_id:
+                model_ids.append(model_id)
+    return sorted(set(model_ids))
 
 
 def resolve_ollama_cli_path() -> Optional[str]:
@@ -509,6 +611,22 @@ def build_gateway_env(profile: dict | None = None) -> dict[str, str]:
         env["GHOSTRELAY_OLLAMA_API_KEY"] = api_key
         return env
 
+    if source == "api":
+        api_provider = (
+            selected.get("apiProvider", {})
+            if isinstance(selected.get("apiProvider"), dict)
+            else {}
+        )
+        provider_id = normalize_provider_id(str(api_provider.get("providerId") or ""), "openai")
+        base_url = str(api_provider.get("baseUrl") or "").strip()
+        api_key = str(api_provider.get("apiKey") or "").strip()
+        env["GHOSTRELAY_API_PROVIDER_ID"] = provider_id
+        if base_url:
+            env["GHOSTRELAY_API_BASE_URL"] = base_url
+        if api_key:
+            env["GHOSTRELAY_API_KEY"] = api_key
+        return env
+
     vertex = selected.get("vertex", {}) if isinstance(selected.get("vertex"), dict) else {}
     sa_path = str(vertex.get("serviceAccountPath") or "").strip()
     project = str(vertex.get("project") or "").strip()
@@ -596,6 +714,26 @@ class AuthCheckThread(QThread):
                 base_url = str(ollama.get("baseUrl") or "").strip()
                 models = fetch_ollama_models(base_url)
                 self.completed.emit(True, f"Ollama OK ({len(models)})", models, "")
+                return
+
+            if source == SettingsDialog.PROVIDER_API:
+                api_provider = (
+                    self.pending_profile.get("apiProvider", {})
+                    if isinstance(self.pending_profile.get("apiProvider"), dict)
+                    else {}
+                )
+                provider_id = normalize_provider_id(str(api_provider.get("providerId") or ""), "openai")
+                base_url = str(api_provider.get("baseUrl") or "").strip() or "https://api.openai.com/v1"
+                api_key = str(api_provider.get("apiKey") or "").strip()
+                api_format = str(api_provider.get("apiFormat") or "openai-completions").strip().lower()
+                if not api_key:
+                    self.completed.emit(False, "실패", [], "API Key가 비어 있습니다.")
+                    return
+                if api_format == "anthropic-messages":
+                    models = fetch_anthropic_models(base_url, api_key)
+                else:
+                    models = fetch_openai_compatible_models(base_url, api_key)
+                self.completed.emit(True, f"API OK ({provider_id}:{len(models)})", models, "")
                 return
 
             openclaw_dir = resolve_openclaw_dir()
@@ -977,11 +1115,24 @@ class ApplySettingsThread(QThread):
                     errors.append(f"{path}: {stderr_item.strip() or stdout_item.strip()}")
         return errors, index
 
+    def resolve_provider_id(self) -> str:
+        source = str(self.profile_settings.get("modelSource") or "").strip().lower()
+        model_ref = str(self.profile_settings.get("model") or "").strip().lower()
+        if "/" in model_ref:
+            return normalize_provider_id(model_ref.split("/", 1)[0], "openai")
+        if source == SettingsDialog.PROVIDER_OLLAMA:
+            return "ollama"
+        if source == SettingsDialog.PROVIDER_API:
+            api_provider = (
+                self.profile_settings.get("apiProvider", {})
+                if isinstance(self.profile_settings.get("apiProvider"), dict)
+                else {}
+            )
+            return normalize_provider_id(str(api_provider.get("providerId") or ""), "openai")
+        return "google-vertex"
+
     def ensure_profile_tool_mode_policy(self, openclaw_mjs: Path, agent_index: int | None = None) -> list[str]:
         errors: list[str] = []
-        source = str(self.profile_settings.get("modelSource") or "").strip().lower()
-        if source != SettingsDialog.PROVIDER_OLLAMA:
-            return errors
         if not isinstance(agent_index, int) or agent_index < 0:
             agent_id = normalize_agent_id(str(self.profile_settings.get("agentId") or self.profile_id))
             agents = self.read_agents_list(openclaw_mjs)
@@ -995,6 +1146,8 @@ class ApplySettingsThread(QThread):
         tool_mode = str(self.profile_settings.get("toolMode") or "auto").strip().lower()
         if tool_mode not in {"auto", "chat", "agent"}:
             tool_mode = "auto"
+        provider_id = self.resolve_provider_id()
+        source = str(self.profile_settings.get("modelSource") or "").strip().lower()
         ollama = self.profile_settings.get("ollama", {})
         supports_tools = (
             ollama.get("supportsTools")
@@ -1013,13 +1166,13 @@ class ApplySettingsThread(QThread):
                 "config",
                 "set",
                 "--json",
-                f"agents.list[{agent_index}].tools.byProvider.ollama.allow",
+                f"agents.list[{agent_index}].tools.byProvider.{provider_id}.allow",
                 allow_payload,
             ],
         )
         if code != 0:
             errors.append(
-                f"agents.list[{agent_index}].tools.byProvider.ollama.allow: "
+                f"agents.list[{agent_index}].tools.byProvider.{provider_id}.allow: "
                 + (stderr_text.strip() or stdout_text.strip() or "set failed")
             )
         return errors
@@ -1034,7 +1187,8 @@ class ApplySettingsThread(QThread):
             openclaw_dir = resolve_openclaw_dir()
             openclaw_mjs = openclaw_dir / "openclaw.mjs"
             if openclaw_mjs.exists():
-                if self.profile_settings.get("modelSource") == SettingsDialog.PROVIDER_OLLAMA:
+                source = str(self.profile_settings.get("modelSource") or "").strip().lower()
+                if source == SettingsDialog.PROVIDER_OLLAMA:
                     ollama = (
                         self.profile_settings.get("ollama", {})
                         if isinstance(self.profile_settings.get("ollama"), dict)
@@ -1100,11 +1254,83 @@ class ApplySettingsThread(QThread):
                             "models.providers.ollama: "
                             + (stderr_text.strip() or stdout_text.strip() or "set failed")
                         )
+                elif source == SettingsDialog.PROVIDER_API:
+                    api_provider = (
+                        self.profile_settings.get("apiProvider", {})
+                        if isinstance(self.profile_settings.get("apiProvider"), dict)
+                        else {}
+                    )
+                    provider_id = normalize_provider_id(str(api_provider.get("providerId") or ""), "openai")
+                    base_url = str(api_provider.get("baseUrl") or "").strip() or "https://api.openai.com/v1"
+                    api_key = str(api_provider.get("apiKey") or "").strip()
+                    api_format = str(api_provider.get("apiFormat") or "openai-completions").strip().lower()
+                    if api_format not in {"openai-completions", "openai-responses", "anthropic-messages"}:
+                        api_format = "openai-completions"
+                    preferred_model = str(api_provider.get("modelName") or "").strip()
+                    selected_model = str(self.profile_settings.get("model") or "").strip()
+                    selected_provider = ""
+                    if "/" in selected_model:
+                        selected_provider, selected_suffix = selected_model.split("/", 1)
+                        selected_provider = normalize_provider_id(selected_provider, provider_id)
+                        selected_model = selected_suffix.strip()
+                    model_ids: list[str] = []
+                    for item in (
+                        preferred_model,
+                        selected_model if (not selected_provider or selected_provider == provider_id) else "",
+                    ):
+                        model_id = str(item or "").strip()
+                        if model_id and model_id not in model_ids:
+                            model_ids.append(model_id)
+                    if not model_ids:
+                        model_ids = ["gpt-4.1-mini"]
+                    context_window = clamp_int(
+                        api_provider.get("contextWindow"),
+                        DEFAULT_API_CONTEXT_WINDOW,
+                        OPENCLAW_MIN_CONTEXT_WINDOW,
+                        MAX_API_CONTEXT_WINDOW,
+                    )
+                    max_tokens = max(1024, min(8192, context_window // 2))
+                    provider_payload = {
+                        "baseUrl": base_url,
+                        "apiKey": api_key,
+                        "api": api_format,
+                        "models": [
+                            {
+                                "id": model_id,
+                                "name": model_id,
+                                "reasoning": False,
+                                "input": ["text"],
+                                "cost": {
+                                    "input": 0,
+                                    "output": 0,
+                                    "cacheRead": 0,
+                                    "cacheWrite": 0,
+                                },
+                                "contextWindow": context_window,
+                                "maxTokens": max_tokens,
+                            }
+                            for model_id in model_ids
+                        ],
+                    }
+                    code, stdout_text, stderr_text = self.run_openclaw(
+                        openclaw_mjs,
+                        [
+                            "config",
+                            "set",
+                            "--json",
+                            f"models.providers.{provider_id}",
+                            json.dumps(provider_payload, ensure_ascii=False),
+                        ],
+                    )
+                    if code != 0:
+                        errors.append(
+                            f"models.providers.{provider_id}: "
+                            + (stderr_text.strip() or stdout_text.strip() or "set failed")
+                        )
 
                 agent_errors, agent_index = self.ensure_profile_agent_config(openclaw_mjs)
                 errors.extend(agent_errors)
-                if self.profile_settings.get("modelSource") == SettingsDialog.PROVIDER_OLLAMA:
-                    errors.extend(self.ensure_profile_tool_mode_policy(openclaw_mjs, agent_index))
+                errors.extend(self.ensure_profile_tool_mode_policy(openclaw_mjs, agent_index))
         except Exception as e:
             errors.append(str(e))
         self.completed.emit(errors)
@@ -1113,6 +1339,65 @@ class ApplySettingsThread(QThread):
 class SettingsDialog(QDialog):
     PROVIDER_VERTEX = "vertex"
     PROVIDER_OLLAMA = "ollama"
+    PROVIDER_API = "api"
+    API_PROVIDER_PRESETS = {
+        "openai": {
+            "label": "OpenAI",
+            "providerId": "openai",
+            "baseUrl": "https://api.openai.com/v1",
+            "apiFormat": "openai-completions",
+            "modelName": "gpt-4.1-mini",
+        },
+        "gemini": {
+            "label": "Google Gemini API",
+            "providerId": "gemini-api",
+            "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "apiFormat": "openai-completions",
+            "modelName": "gemini-2.0-flash",
+        },
+        "anthropic": {
+            "label": "Anthropic API",
+            "providerId": "anthropic-api",
+            "baseUrl": "https://api.anthropic.com/v1",
+            "apiFormat": "anthropic-messages",
+            "modelName": "claude-sonnet-4-5",
+        },
+        "openrouter": {
+            "label": "OpenRouter",
+            "providerId": "openrouter",
+            "baseUrl": "https://openrouter.ai/api/v1",
+            "apiFormat": "openai-completions",
+            "modelName": "openai/gpt-4.1-mini",
+        },
+        "groq": {
+            "label": "Groq",
+            "providerId": "groq",
+            "baseUrl": "https://api.groq.com/openai/v1",
+            "apiFormat": "openai-completions",
+            "modelName": "llama-3.3-70b-versatile",
+        },
+        "xai": {
+            "label": "xAI",
+            "providerId": "xai",
+            "baseUrl": "https://api.x.ai/v1",
+            "apiFormat": "openai-completions",
+            "modelName": "grok-4",
+        },
+        "lmstudio": {
+            "label": "LM Studio (local)",
+            "providerId": "lmstudio",
+            "baseUrl": "http://127.0.0.1:1234/v1",
+            "apiFormat": "openai-completions",
+            "modelName": "local-model",
+        },
+        "vllm": {
+            "label": "vLLM (local)",
+            "providerId": "vllm",
+            "baseUrl": "http://127.0.0.1:8000/v1",
+            "apiFormat": "openai-completions",
+            "modelName": "local-model",
+        },
+    }
 
     def __init__(self, parent=None, initial_profile: str | None = None):
         super().__init__(parent)
@@ -1173,7 +1458,7 @@ class SettingsDialog(QDialog):
 
     def current_source(self) -> str:
         source = str(self.source_combo.currentData() or "").strip().lower()
-        if source not in {self.PROVIDER_VERTEX, self.PROVIDER_OLLAMA}:
+        if source not in {self.PROVIDER_VERTEX, self.PROVIDER_OLLAMA, self.PROVIDER_API}:
             return self.PROVIDER_VERTEX
         return source
 
@@ -1191,15 +1476,82 @@ class SettingsDialog(QDialog):
             return raw
         return f"ollama/{raw}"
 
+    def get_api_provider_id(self) -> str:
+        return normalize_provider_id(self.api_provider_id_input.text().strip(), "openai")
+
+    def normalize_api_model(self, provider_id: str, model_name: str) -> str:
+        provider = normalize_provider_id(provider_id, "openai")
+        raw_model = str(model_name or "").strip()
+        if not raw_model:
+            raw_model = "gpt-4.1-mini"
+        if raw_model.startswith(f"{provider}/"):
+            return raw_model
+        return f"{provider}/{raw_model}"
+
+    def infer_api_preset_key(self, provider_id: str, base_url: str) -> str:
+        normalized_provider = normalize_provider_id(provider_id, "openai")
+        normalized_base = str(base_url or "").strip().rstrip("/")
+        for preset_key, preset in self.API_PROVIDER_PRESETS.items():
+            preset_provider = normalize_provider_id(str(preset.get("providerId") or ""), "openai")
+            preset_base = str(preset.get("baseUrl") or "").strip().rstrip("/")
+            if normalized_provider == preset_provider and normalized_base == preset_base:
+                return preset_key
+        return "custom"
+
+    def apply_api_preset(self, preset_key: str, trigger_auth: bool = True):
+        key = str(preset_key or "").strip().lower()
+        if key == "custom":
+            return
+        preset = self.API_PROVIDER_PRESETS.get(key)
+        if not isinstance(preset, dict):
+            return
+        self.api_provider_id_input.setText(str(preset.get("providerId") or "openai"))
+        self.api_base_url_input.setText(str(preset.get("baseUrl") or "https://api.openai.com/v1"))
+        self.api_model_input.setText(str(preset.get("modelName") or "gpt-4.1-mini"))
+        api_format = str(preset.get("apiFormat") or "openai-completions").strip().lower()
+        format_index = self.api_format_combo.findData(api_format)
+        self.api_format_combo.setCurrentIndex(format_index if format_index >= 0 else 0)
+        self.sync_api_model_preview()
+        if trigger_auth:
+            self.check_auth(show_popup=False)
+
+    def on_api_preset_changed(self):
+        if self._profile_loading:
+            return
+        preset_key = str(self.api_preset_combo.currentData() or "custom").strip().lower()
+        self.apply_api_preset(preset_key, trigger_auth=False)
+
+    def sync_api_preset_from_inputs(self):
+        if self._profile_loading:
+            return
+        preset_key = self.infer_api_preset_key(
+            self.api_provider_id_input.text().strip(),
+            self.api_base_url_input.text().strip(),
+        )
+        current_key = str(self.api_preset_combo.currentData() or "").strip().lower()
+        if current_key == preset_key:
+            return
+        self.api_preset_combo.blockSignals(True)
+        preset_index = self.api_preset_combo.findData(preset_key)
+        if preset_index < 0:
+            preset_index = self.api_preset_combo.findData("custom")
+        if preset_index < 0:
+            preset_index = 0
+        self.api_preset_combo.setCurrentIndex(preset_index)
+        self.api_preset_combo.blockSignals(False)
+
     def build_pending_profile(self, profile_id: str | None = None) -> dict:
         pid = normalize_profile_id(profile_id or self.active_profile_id)
         source = self.current_source()
         ollama_model_name = self.ollama_model_input.text().strip() or "llama3.3"
-        effective_model = (
-            self.normalize_ollama_model(ollama_model_name)
-            if source == self.PROVIDER_OLLAMA
-            else (self.model_combo.currentText().strip() or "google-vertex/gemini-2.0-flash")
-        )
+        api_provider_id = self.get_api_provider_id()
+        api_model_name = self.api_model_input.text().strip() or "gpt-4.1-mini"
+        if source == self.PROVIDER_OLLAMA:
+            effective_model = self.normalize_ollama_model(ollama_model_name)
+        elif source == self.PROVIDER_API:
+            effective_model = self.normalize_api_model(api_provider_id, api_model_name)
+        else:
+            effective_model = self.model_combo.currentText().strip() or "google-vertex/gemini-2.0-flash"
         workspace = str(resolve_profile_workspace(pid, self.workspace_input.text().strip()))
         agent_id_value = normalize_agent_id(self.agent_id_input.text().strip() or pid)
         if pid != "main" and agent_id_value == "main":
@@ -1233,6 +1585,19 @@ class SettingsDialog(QDialog):
                     6,
                     1,
                     20,
+                ),
+            },
+            "apiProvider": {
+                "providerId": api_provider_id,
+                "baseUrl": self.api_base_url_input.text().strip() or "https://api.openai.com/v1",
+                "apiKey": self.api_key_input.text().strip(),
+                "modelName": api_model_name,
+                "apiFormat": str(self.api_format_combo.currentData() or "openai-completions"),
+                "contextWindow": clamp_int(
+                    self.api_context_input.text(),
+                    DEFAULT_API_CONTEXT_WINDOW,
+                    OPENCLAW_MIN_CONTEXT_WINDOW,
+                    MAX_API_CONTEXT_WINDOW,
                 ),
             },
         }
@@ -1276,6 +1641,8 @@ class SettingsDialog(QDialog):
         self._profile_loading = True
         try:
             source = str(profile.get("modelSource") or self.PROVIDER_VERTEX).strip().lower()
+            if source not in {self.PROVIDER_VERTEX, self.PROVIDER_OLLAMA, self.PROVIDER_API}:
+                source = self.PROVIDER_VERTEX
             source_idx = self.source_combo.findData(source)
             self.source_combo.setCurrentIndex(source_idx if source_idx >= 0 else 0)
 
@@ -1327,6 +1694,48 @@ class SettingsDialog(QDialog):
             self.detected_tools_supported = supports_tools if isinstance(supports_tools, bool) else None
             self.detected_tools_detail = ""
             self.sync_ollama_model_preview()
+
+            api_provider = (
+                profile.get("apiProvider", {})
+                if isinstance(profile.get("apiProvider"), dict)
+                else {}
+            )
+            provider_id = normalize_provider_id(str(api_provider.get("providerId") or ""), "openai")
+            self.api_provider_id_input.setText(provider_id)
+            self.api_base_url_input.setText(str(api_provider.get("baseUrl") or "https://api.openai.com/v1"))
+            self.api_key_input.setText(str(api_provider.get("apiKey") or ""))
+            api_model_name = str(api_provider.get("modelName") or "").strip()
+            if not api_model_name:
+                if "/" in model:
+                    model_provider, model_suffix = model.split("/", 1)
+                    if normalize_provider_id(model_provider, provider_id) == provider_id:
+                        api_model_name = model_suffix.strip()
+            self.api_model_input.setText(api_model_name or "gpt-4.1-mini")
+            api_format = str(api_provider.get("apiFormat") or "openai-completions").strip().lower()
+            if api_format not in {"openai-completions", "openai-responses", "anthropic-messages"}:
+                api_format = "openai-completions"
+            format_index = self.api_format_combo.findData(api_format)
+            self.api_format_combo.setCurrentIndex(format_index if format_index >= 0 else 0)
+            self.api_context_input.setText(
+                str(
+                    clamp_int(
+                        api_provider.get("contextWindow"),
+                        DEFAULT_API_CONTEXT_WINDOW,
+                        OPENCLAW_MIN_CONTEXT_WINDOW,
+                        MAX_API_CONTEXT_WINDOW,
+                    )
+                )
+            )
+            preset_key = self.infer_api_preset_key(
+                self.api_provider_id_input.text().strip(),
+                self.api_base_url_input.text().strip(),
+            )
+            self.api_preset_combo.blockSignals(True)
+            preset_index = self.api_preset_combo.findData(preset_key)
+            self.api_preset_combo.setCurrentIndex(preset_index if preset_index >= 0 else 0)
+            self.api_preset_combo.blockSignals(False)
+            self.set_api_models([])
+            self.sync_api_model_preview()
         finally:
             self._profile_loading = False
         self.sync_source_visibility()
@@ -1427,10 +1836,54 @@ class SettingsDialog(QDialog):
         self.detect_ollama_context(show_popup=False)
         self.detect_ollama_tools_support(show_popup=False)
 
+    def set_api_models(self, models: list[str]):
+        current = self.api_model_input.text().strip()
+        self.api_models_combo.blockSignals(True)
+        self.api_models_combo.clear()
+        selected_model = ""
+        if models:
+            self.api_models_combo.addItems(models)
+            self.api_models_combo.setEnabled(True)
+            if current in models:
+                self.api_models_combo.setCurrentText(current)
+                selected_model = current
+            else:
+                self.api_models_combo.setCurrentIndex(0)
+                selected_model = self.api_models_combo.currentText().strip()
+        else:
+            self.api_models_combo.addItem("(모델 없음)")
+            self.api_models_combo.setEnabled(False)
+        self.api_models_combo.blockSignals(False)
+        if selected_model:
+            self.on_api_model_selected(selected_model)
+
+    def load_api_models(self, show_popup: bool = False):
+        self.check_auth(show_popup=show_popup)
+
+    def on_api_model_selected(self, model_name: str):
+        selected = str(model_name or "").strip()
+        if not selected or selected == "(모델 없음)":
+            return
+        self.api_model_input.setText(selected)
+        self.sync_api_model_preview()
+
+    def sync_api_model_preview(self):
+        if self.current_source() != self.PROVIDER_API:
+            return
+        provider_id = self.get_api_provider_id()
+        model_name = self.api_model_input.text().strip()
+        self.model_combo.setCurrentText(self.normalize_api_model(provider_id, model_name))
+
     def update_tools_support_hint(self):
         if not hasattr(self, "tool_support_hint"):
             return
         source = self.current_source()
+        if source == self.PROVIDER_API:
+            self.tool_support_hint.setText(
+                "API 모드: 모델별 tools 지원 정책이 다릅니다. 필요 시 대화 전용(도구 OFF)으로 사용하세요."
+            )
+            self.tool_support_hint.setStyleSheet("color: #9ca3af; font-size: 11px;")
+            return
         if source != self.PROVIDER_OLLAMA:
             self.tool_support_hint.setText("Vertex 모드: 도구 가능 여부는 OpenClaw/모델 정책에 따릅니다.")
             self.tool_support_hint.setStyleSheet("color: #9ca3af; font-size: 11px;")
@@ -1690,23 +2143,36 @@ class SettingsDialog(QDialog):
         self.sync_source_visibility()
         if self.current_source() == self.PROVIDER_OLLAMA:
             self.detect_ollama_tools_support(show_popup=False)
+        elif self.current_source() == self.PROVIDER_API:
+            self.sync_api_model_preview()
         self.check_auth()
 
     def sync_source_visibility(self):
-        use_vertex = self.current_source() == self.PROVIDER_VERTEX
+        source = self.current_source()
+        use_vertex = source == self.PROVIDER_VERTEX
+        use_ollama = source == self.PROVIDER_OLLAMA
+        use_api = source == self.PROVIDER_API
         self.model_combo.setEnabled(use_vertex)
         self.vertex_sa_row.setVisible(use_vertex)
         self.vertex_project_row.setVisible(use_vertex)
         self.vertex_location_row.setVisible(use_vertex)
-        self.advanced_row.setVisible(not use_vertex)
-        self.ollama_base_row.setVisible(not use_vertex)
-        self.ollama_model_row.setVisible(not use_vertex)
-        self.ollama_models_row.setVisible(not use_vertex)
-        self.ollama_context_row.setVisible(not use_vertex)
-        self.ollama_injection_row.setVisible(not use_vertex)
-        self.ollama_history_row.setVisible(not use_vertex)
+        self.advanced_row.setVisible(use_ollama or use_api)
+        self.ollama_base_row.setVisible(use_ollama)
+        self.ollama_model_row.setVisible(use_ollama)
+        self.ollama_models_row.setVisible(use_ollama)
+        self.ollama_context_row.setVisible(use_ollama)
+        self.ollama_injection_row.setVisible(use_ollama)
+        self.ollama_history_row.setVisible(use_ollama)
+        self.api_preset_row.setVisible(use_api)
+        self.api_provider_row.setVisible(use_api)
+        self.api_base_row.setVisible(use_api)
+        self.api_model_row.setVisible(use_api)
+        self.api_models_row.setVisible(use_api)
+        self.api_context_row.setVisible(use_api)
         show_advanced = bool(self.show_advanced_checkbox.isChecked())
-        self.ollama_api_row.setVisible((not use_vertex) and show_advanced)
+        self.ollama_api_row.setVisible(use_ollama and show_advanced)
+        self.api_key_row.setVisible(use_api)
+        self.api_format_row.setVisible(use_api and show_advanced)
 
         if use_vertex:
             self.model_label.setText("BRAIN 모델")
@@ -1717,21 +2183,36 @@ class SettingsDialog(QDialog):
             self.update_tools_support_hint()
             return
 
-        effective = self.normalize_ollama_model(self.ollama_model_input.text())
-        self.model_combo.setCurrentText(effective)
         self.model_label.setText("실행 모델(OpenClaw ID)")
+        if use_ollama:
+            effective = self.normalize_ollama_model(self.ollama_model_input.text())
+            self.model_combo.setCurrentText(effective)
+            self.update_tools_support_hint()
+            if show_advanced:
+                self.note_label.setText(
+                    "Ollama 모드: 목록은 참고용이며, 실제 실행값은 Ollama Model/실행 모델(OpenClaw ID)입니다. "
+                    "주입 강도/히스토리 턴 수로 대화 품질과 지연을 조정할 수 있습니다."
+                )
+            else:
+                self.note_label.setText(
+                    "Ollama 모드: 목록은 참고용이며, 실제 실행값은 Ollama Model/실행 모델(OpenClaw ID)입니다. "
+                    "주입 강도/히스토리 턴 수로 품질을 조절하고, API Key는 고급 옵션에서 필요할 때만 설정하세요."
+                )
+            self.validate_ollama_context(show_popup=False)
+            return
+
+        self.sync_api_model_preview()
         self.update_tools_support_hint()
         if show_advanced:
             self.note_label.setText(
-                "Ollama 모드: 목록은 참고용이며, 실제 실행값은 Ollama Model/실행 모델(OpenClaw ID)입니다. "
-                "주입 강도/히스토리 턴 수로 대화 품질과 지연을 조정할 수 있습니다."
+                "API 모드: 프리셋 또는 Provider ID + Base URL + Model 조합으로 OpenClaw custom provider를 등록합니다."
             )
             return
         self.note_label.setText(
-            "Ollama 모드: 목록은 참고용이며, 실제 실행값은 Ollama Model/실행 모델(OpenClaw ID)입니다. "
-            "주입 강도/히스토리 턴 수로 품질을 조절하고, API Key는 고급 옵션에서 필요할 때만 설정하세요."
+            "API 모드: 프리셋(OpenAI/OpenRouter/Groq 등) 선택 후 필요시 수동 수정하세요. "
+            "일반적으로 Provider ID, Base URL, Model만 지정하면 됩니다. "
+            "API Key/포맷은 고급 옵션에서 설정하세요."
         )
-        self.validate_ollama_context(show_popup=False)
 
     def sync_ollama_model_preview(self):
         if self.current_source() != self.PROVIDER_OLLAMA:
@@ -1807,6 +2288,7 @@ class SettingsDialog(QDialog):
         self.source_combo = QComboBox()
         self.source_combo.addItem("Vertex API", self.PROVIDER_VERTEX)
         self.source_combo.addItem("로컬 GPU (Ollama)", self.PROVIDER_OLLAMA)
+        self.source_combo.addItem("범용 API (OpenAI 호환)", self.PROVIDER_API)
         current_source = str(self.profile_settings.get("modelSource") or self.PROVIDER_VERTEX).strip().lower()
         source_index = self.source_combo.findData(current_source)
         self.source_combo.setCurrentIndex(source_index if source_index >= 0 else 0)
@@ -1840,6 +2322,7 @@ class SettingsDialog(QDialog):
             "google-vertex/gemini-2.0-flash",
             "google-vertex/gemini-1.5-pro",
             "openai/gpt-4.1-mini",
+            "openrouter/openai/gpt-4.1-mini",
             "ollama/llama3.3",
         ])
         current_model = self.profile_settings.get("model") or "google-vertex/gemini-2.0-flash"
@@ -2017,6 +2500,119 @@ class SettingsDialog(QDialog):
         ollama_api_row_layout.addWidget(self.ollama_api_key_input)
         layout.addWidget(self.ollama_api_row)
 
+        api_settings = (
+            self.profile_settings.get("apiProvider", {})
+            if isinstance(self.profile_settings.get("apiProvider"), dict)
+            else {}
+        )
+        default_api_provider_id = normalize_provider_id(str(api_settings.get("providerId") or ""), "openai")
+        default_api_model_name = str(api_settings.get("modelName") or "").strip() or "gpt-4.1-mini"
+        default_api_base_url = str(api_settings.get("baseUrl") or "").strip() or "https://api.openai.com/v1"
+        default_api_format = str(api_settings.get("apiFormat") or "openai-completions").strip().lower()
+        if default_api_format not in {"openai-completions", "openai-responses", "anthropic-messages"}:
+            default_api_format = "openai-completions"
+        initial_preset_key = self.infer_api_preset_key(default_api_provider_id, default_api_base_url)
+
+        self.api_preset_row = QWidget()
+        api_preset_row_layout = QHBoxLayout(self.api_preset_row)
+        api_preset_row_layout.setContentsMargins(0, 0, 0, 0)
+        api_preset_row_layout.addWidget(QLabel("API 프리셋"))
+        self.api_preset_combo = QComboBox()
+        for preset_key, preset in self.API_PROVIDER_PRESETS.items():
+            self.api_preset_combo.addItem(str(preset.get("label") or preset_key), preset_key)
+        self.api_preset_combo.addItem("Custom (직접 입력)", "custom")
+        preset_index = self.api_preset_combo.findData(initial_preset_key)
+        self.api_preset_combo.setCurrentIndex(preset_index if preset_index >= 0 else 0)
+        api_preset_row_layout.addWidget(self.api_preset_combo)
+        self.btn_apply_api_preset = QPushButton("적용")
+        self.btn_apply_api_preset.clicked.connect(self.on_api_preset_changed)
+        api_preset_row_layout.addWidget(self.btn_apply_api_preset)
+        layout.addWidget(self.api_preset_row)
+
+        self.api_provider_row = QWidget()
+        api_provider_row_layout = QHBoxLayout(self.api_provider_row)
+        api_provider_row_layout.setContentsMargins(0, 0, 0, 0)
+        api_provider_row_layout.addWidget(QLabel("API Provider ID"))
+        self.api_provider_id_input = QLineEdit(default_api_provider_id)
+        self.api_provider_id_input.setPlaceholderText("예: openai, openrouter, lmstudio")
+        api_provider_row_layout.addWidget(self.api_provider_id_input)
+        layout.addWidget(self.api_provider_row)
+
+        self.api_base_row = QWidget()
+        api_base_row_layout = QHBoxLayout(self.api_base_row)
+        api_base_row_layout.setContentsMargins(0, 0, 0, 0)
+        api_base_row_layout.addWidget(QLabel("API Base URL"))
+        self.api_base_url_input = QLineEdit(default_api_base_url)
+        self.api_base_url_input.setPlaceholderText("예: https://api.openai.com/v1")
+        api_base_row_layout.addWidget(self.api_base_url_input)
+        layout.addWidget(self.api_base_row)
+
+        self.api_model_row = QWidget()
+        api_model_row_layout = QHBoxLayout(self.api_model_row)
+        api_model_row_layout.setContentsMargins(0, 0, 0, 0)
+        api_model_row_layout.addWidget(QLabel("API Model"))
+        self.api_model_input = QLineEdit(default_api_model_name)
+        self.api_model_input.setPlaceholderText("예: gpt-4.1-mini, anthropic/claude-sonnet-4-5")
+        api_model_row_layout.addWidget(self.api_model_input)
+        self.btn_api_refresh = QPushButton("목록 불러오기")
+        self.btn_api_refresh.clicked.connect(lambda: self.load_api_models(show_popup=True))
+        api_model_row_layout.addWidget(self.btn_api_refresh)
+        layout.addWidget(self.api_model_row)
+
+        self.api_models_row = QWidget()
+        api_models_row_layout = QHBoxLayout(self.api_models_row)
+        api_models_row_layout.setContentsMargins(0, 0, 0, 0)
+        api_models_row_layout.addWidget(QLabel("API 목록"))
+        self.api_models_combo = QComboBox()
+        self.api_models_combo.setEnabled(False)
+        self.api_models_combo.addItem("(모델 없음)")
+        self.api_models_combo.currentTextChanged.connect(self.on_api_model_selected)
+        api_models_row_layout.addWidget(self.api_models_combo)
+        layout.addWidget(self.api_models_row)
+
+        self.api_context_row = QWidget()
+        api_context_row_layout = QHBoxLayout(self.api_context_row)
+        api_context_row_layout.setContentsMargins(0, 0, 0, 0)
+        api_context_row_layout.addWidget(QLabel("API Context(토큰)"))
+        self.api_context_input = QLineEdit(
+            str(
+                clamp_int(
+                    api_settings.get("contextWindow"),
+                    DEFAULT_API_CONTEXT_WINDOW,
+                    OPENCLAW_MIN_CONTEXT_WINDOW,
+                    MAX_API_CONTEXT_WINDOW,
+                )
+            )
+        )
+        self.api_context_input.setPlaceholderText(
+            f"최소 {OPENCLAW_MIN_CONTEXT_WINDOW} (권장 {DEFAULT_API_CONTEXT_WINDOW})"
+        )
+        api_context_row_layout.addWidget(self.api_context_input)
+        layout.addWidget(self.api_context_row)
+
+        self.api_format_row = QWidget()
+        api_format_row_layout = QHBoxLayout(self.api_format_row)
+        api_format_row_layout.setContentsMargins(0, 0, 0, 0)
+        api_format_row_layout.addWidget(QLabel("API Format"))
+        self.api_format_combo = QComboBox()
+        self.api_format_combo.addItem("OpenAI Chat Completions", "openai-completions")
+        self.api_format_combo.addItem("OpenAI Responses", "openai-responses")
+        self.api_format_combo.addItem("Anthropic Messages", "anthropic-messages")
+        api_format_index = self.api_format_combo.findData(default_api_format)
+        self.api_format_combo.setCurrentIndex(api_format_index if api_format_index >= 0 else 0)
+        api_format_row_layout.addWidget(self.api_format_combo)
+        layout.addWidget(self.api_format_row)
+
+        self.api_key_row = QWidget()
+        api_key_row_layout = QHBoxLayout(self.api_key_row)
+        api_key_row_layout.setContentsMargins(0, 0, 0, 0)
+        api_key_row_layout.addWidget(QLabel("API Key"))
+        self.api_key_input = QLineEdit(str(api_settings.get("apiKey") or ""))
+        self.api_key_input.setPlaceholderText("sk-... 또는 provider API key")
+        self.api_key_input.setEchoMode(QLineEdit.Password)
+        api_key_row_layout.addWidget(self.api_key_input)
+        layout.addWidget(self.api_key_row)
+
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         self.auth_status = QLabel("인증 상태: 미확인 ●")
@@ -2048,6 +2644,14 @@ class SettingsDialog(QDialog):
         self.ollama_model_input.editingFinished.connect(lambda: self.detect_ollama_tools_support(show_popup=False))
         self.ollama_context_input.textChanged.connect(lambda: self.validate_ollama_context(show_popup=False))
         self.ollama_history_slider.valueChanged.connect(self.on_ollama_history_turns_changed)
+        self.api_provider_id_input.editingFinished.connect(self.sync_api_model_preview)
+        self.api_provider_id_input.editingFinished.connect(self.sync_api_preset_from_inputs)
+        self.api_base_url_input.editingFinished.connect(self.sync_api_preset_from_inputs)
+        self.api_base_url_input.editingFinished.connect(self.check_auth)
+        self.api_model_input.textChanged.connect(self.sync_api_model_preview)
+        self.api_model_input.editingFinished.connect(self.check_auth)
+        self.api_key_input.editingFinished.connect(self.check_auth)
+        self.api_preset_combo.currentIndexChanged.connect(self.on_api_preset_changed)
         self.refresh_profile_selector(self.active_profile_id)
         self.load_profile_into_form(self.active_profile_id)
 
@@ -2119,10 +2723,30 @@ class SettingsDialog(QDialog):
     def apply_settings(self):
         if self.apply_thread and self.apply_thread.isRunning():
             return
-        if self.current_source() == self.PROVIDER_OLLAMA:
+        source = self.current_source()
+        if source == self.PROVIDER_OLLAMA:
             if not self.validate_ollama_context(show_popup=True):
                 return
             if not self.enforce_tool_mode_compatibility(show_popup=True):
+                return
+        elif source == self.PROVIDER_API:
+            provider_id = self.get_api_provider_id()
+            model_name = str(self.api_model_input.text() or "").strip()
+            base_url = str(self.api_base_url_input.text() or "").strip()
+            api_key = str(self.api_key_input.text() or "").strip()
+            if not provider_id or not model_name or not base_url:
+                QMessageBox.warning(
+                    self,
+                    "입력 확인",
+                    "API 모드에서는 Provider ID, Base URL, API Model을 모두 입력해야 합니다.",
+                )
+                return
+            if not api_key:
+                QMessageBox.warning(
+                    self,
+                    "입력 확인",
+                    "API 모드에서는 API Key를 입력해야 합니다.",
+                )
                 return
         selected_profile_id = normalize_profile_id(
             str(self.profile_combo.currentData() or self.active_profile_id)
@@ -2152,10 +2776,14 @@ class SettingsDialog(QDialog):
             "btn_check_auth",
             "btn_ollama_refresh",
             "btn_ollama_detect_context",
+            "btn_api_refresh",
+            "btn_apply_api_preset",
             "source_combo",
             "tool_mode_combo",
             "ollama_injection_combo",
             "ollama_history_slider",
+            "api_preset_combo",
+            "api_format_combo",
             "profile_combo",
             "btn_profile_add",
             "btn_profile_remove",
@@ -2201,17 +2829,28 @@ class SettingsDialog(QDialog):
                 self.detected_tools_supported = None
                 self.detected_tools_detail = detail or "Ollama 연결 실패"
                 self.update_tools_support_hint()
+        elif source == self.PROVIDER_API:
+            self.set_api_models([str(item) for item in models if isinstance(item, str)])
+            if ok:
+                self.sync_api_model_preview()
         self.set_auth_status(ok, label)
 
         if self._auth_popup_pending:
             if ok:
                 if source == self.PROVIDER_OLLAMA:
                     QMessageBox.information(self, "Ollama 연결", f"모델 {len(models)}개를 불러왔습니다.")
+                elif source == self.PROVIDER_API:
+                    QMessageBox.information(self, "API 연결", f"모델 {len(models)}개를 불러왔습니다.")
                 else:
                     QMessageBox.information(self, "인증 확인", "Vertex 인증이 정상입니다.")
             else:
                 message = detail.strip() if detail else "인증 확인에 실패했습니다."
-                title = "Ollama 연결 실패" if source == self.PROVIDER_OLLAMA else "인증 실패"
+                if source == self.PROVIDER_OLLAMA:
+                    title = "Ollama 연결 실패"
+                elif source == self.PROVIDER_API:
+                    title = "API 연결 실패"
+                else:
+                    title = "인증 실패"
                 QMessageBox.warning(self, title, message)
 
         self._auth_popup_pending = False
@@ -2219,6 +2858,8 @@ class SettingsDialog(QDialog):
             self.btn_check_auth.setEnabled(True)
         if hasattr(self, "btn_ollama_refresh"):
             self.btn_ollama_refresh.setEnabled(True)
+        if hasattr(self, "btn_api_refresh"):
+            self.btn_api_refresh.setEnabled(True)
         self.auth_check_thread = None
 
     def check_auth(self, checked: bool = False, show_popup: bool = False):
@@ -2239,6 +2880,8 @@ class SettingsDialog(QDialog):
             self.btn_check_auth.setEnabled(False)
         if hasattr(self, "btn_ollama_refresh"):
             self.btn_ollama_refresh.setEnabled(False)
+        if hasattr(self, "btn_api_refresh"):
+            self.btn_api_refresh.setEnabled(False)
 
         self.auth_check_thread = AuthCheckThread(pending)
         self.auth_check_thread.completed.connect(self.on_auth_check_completed)

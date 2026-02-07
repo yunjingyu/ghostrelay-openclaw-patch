@@ -220,7 +220,9 @@ class BrainPrepareThread(QThread):
             return "ollama"
         if raw.startswith("google-vertex/"):
             return "vertex"
-        return fallback if fallback in {"vertex", "ollama"} else "vertex"
+        if "/" in raw:
+            return "api"
+        return fallback if fallback in {"vertex", "ollama", "api"} else "vertex"
 
     def build_bridge_profile(self) -> dict:
         profile = dict(self.profile_settings)
@@ -237,6 +239,17 @@ class BrainPrepareThread(QThread):
             model_name = self.brain_model.split("/", 1)[1].strip() if self.brain_model.startswith("ollama/") else self.brain_model
             ollama["modelName"] = model_name
             profile["ollama"] = ollama
+        elif source == "api":
+            api_provider = profile.get("apiProvider", {})
+            if not isinstance(api_provider, dict):
+                api_provider = {}
+            model_provider, model_name = ("", self.brain_model)
+            if "/" in self.brain_model:
+                model_provider, model_name = self.brain_model.split("/", 1)
+            if model_provider:
+                api_provider["providerId"] = model_provider.strip().lower()
+            api_provider["modelName"] = model_name.strip()
+            profile["apiProvider"] = api_provider
         return profile
 
     def send_prepare_ping(self, token: str) -> tuple[bool, str]:
@@ -418,7 +431,9 @@ class BrainMemorySyncThread(QThread):
             return "ollama"
         if raw.startswith("google-vertex/"):
             return "vertex"
-        return fallback if fallback in {"vertex", "ollama"} else "vertex"
+        if "/" in raw:
+            return "api"
+        return fallback if fallback in {"vertex", "ollama", "api"} else "vertex"
 
     def build_bridge_profile(self) -> dict:
         profile = dict(self.profile_settings)
@@ -435,6 +450,17 @@ class BrainMemorySyncThread(QThread):
             model_name = self.brain_model.split("/", 1)[1].strip() if self.brain_model.startswith("ollama/") else self.brain_model
             ollama["modelName"] = model_name
             profile["ollama"] = ollama
+        elif source == "api":
+            api_provider = profile.get("apiProvider", {})
+            if not isinstance(api_provider, dict):
+                api_provider = {}
+            model_provider, model_name = ("", self.brain_model)
+            if "/" in self.brain_model:
+                model_provider, model_name = self.brain_model.split("/", 1)
+            if model_provider:
+                api_provider["providerId"] = model_provider.strip().lower()
+            api_provider["modelName"] = model_name.strip()
+            profile["apiProvider"] = api_provider
         return profile
 
     def send_sync_request(self, token: str) -> tuple[bool, str]:

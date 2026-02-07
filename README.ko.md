@@ -16,6 +16,8 @@ GhostRelay는 OpenClaw 주변에 데스크톱 제어면(Control Plane)을 제공
 
 - Launcher에서 게이트웨이 제어(`start/stop/restart`) + 트레이 관리
 - Ghost Chat의 프로필 기반 모드(`auto`, `chat`, `agent`)
+- 범용 API 모드(`Provider ID` + `Base URL` + `Model` + `API Key`) 지원
+- 주요 공급자 프리셋(OpenAI/Gemini/Anthropic/OpenRouter/Groq/xAI/LM Studio/vLLM) 지원
 - Companion 채팅의 브레인 준비/메모리 동기화(`BRAIN_SUMMARY.md`)
 - Ollama 모델 관리(목록/등록/제거)
 - Persona/Memory/Session/Skills 사이드패널 편집
@@ -56,15 +58,30 @@ start.bat
 - 기본: 최소화 + `pythonw`
 - 콘솔 모드: `start.bat --console`
 
+## 스크린샷
+
+| 콘솔 | 고스트 챗 |
+| --- | --- |
+| ![GhostRelay Console](docs/images/main.png) | ![Ghost Chat](docs/images/ghost_chat.png) |
+
+| 컴패니언 | 스킬 대시보드 |
+| --- | --- |
+| ![Chat Companion](docs/images/chat_companion.png) | ![Skills Dashboard](docs/images/skill_dashboard.png) |
+
+| Ollama 모델 관리 | 시스템/트레이 |
+| --- | --- |
+| ![Ollama Model Manager](docs/images/ollama_consol.png) | ![System Tray](docs/images/system.png) |
+
 ## 상태
 
-- 버전: `0.4.0-beta.1` (`VERSION`)
+- 버전: `0.4.0-beta.2` (`VERSION`)
 - 단계: `Beta`
 - 기준일: `2026-02-08`
 
 ### 검증됨
 
 - `python -m py_compile`로 핵심 파이썬 파일 컴파일 검증
+- 설정 스키마에서 `Vertex`/`Ollama`/범용 `OpenAI 호환 API` 소스 모드 지원
 - 공개 번들 스크립트 실행 성공
 - 번들에 `LICENSE`/`NOTICE` 포함, 개인 런타임 데이터 제외 확인
 - GitHub 저장소 부트스트랩/푸시 경로 검증

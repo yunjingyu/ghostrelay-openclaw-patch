@@ -36,6 +36,7 @@ from settings_store import (
     get_profile,
     list_profiles,
     load_settings,
+    normalize_provider_id,
     normalize_profile_id,
     save_settings,
 )
@@ -398,6 +399,22 @@ class OpenClawGatewayManager:
                 env["GHOSTRELAY_OLLAMA_BASE_URL"] = base_url
             return env
 
+        if model_source == "api":
+            api_provider = (
+                settings.get("apiProvider", {})
+                if isinstance(settings.get("apiProvider"), dict)
+                else {}
+            )
+            provider_id = normalize_provider_id(str(api_provider.get("providerId") or ""), "openai")
+            base_url = str(api_provider.get("baseUrl") or "").strip()
+            api_key = str(api_provider.get("apiKey") or "").strip()
+            env["GHOSTRELAY_API_PROVIDER_ID"] = provider_id
+            if base_url:
+                env["GHOSTRELAY_API_BASE_URL"] = base_url
+            if api_key:
+                env["GHOSTRELAY_API_KEY"] = api_key
+            return env
+
         vertex = settings.get("vertex", {}) if isinstance(settings.get("vertex"), dict) else {}
         sa_path = str(vertex.get("serviceAccountPath") or "").strip()
         project = str(vertex.get("project") or "").strip()
@@ -756,7 +773,7 @@ class OpenClawAgentThread(QThread):
 
     def get_profile_model_source(self) -> str:
         source = str(self.profile_settings.get("modelSource") or "").strip().lower()
-        return source if source in {"vertex", "ollama"} else "vertex"
+        return source if source in {"vertex", "ollama", "api"} else "vertex"
 
     def get_profile_ollama_tools_support(self) -> Optional[bool]:
         if self.get_profile_model_source() != "ollama":
@@ -961,10 +978,17 @@ class OpenClawAgentThread(QThread):
         source_settings = self.profile_settings if isinstance(self.profile_settings, dict) else {}
         model_ref = str(source_settings.get("model") or "").strip().lower()
         if "/" in model_ref:
-            return model_ref.split("/", 1)[0]
+            return normalize_provider_id(model_ref.split("/", 1)[0], "openai")
         source = str(source_settings.get("modelSource") or "").strip().lower()
         if source == "ollama":
             return "ollama"
+        if source == "api":
+            api_provider = (
+                source_settings.get("apiProvider", {})
+                if isinstance(source_settings.get("apiProvider"), dict)
+                else {}
+            )
+            return normalize_provider_id(str(api_provider.get("providerId") or ""), "openai")
         if source == "vertex":
             return "google-vertex"
         return ""
