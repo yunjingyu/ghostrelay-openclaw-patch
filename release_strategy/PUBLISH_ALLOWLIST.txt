@@ -2,42 +2,42 @@
 # Publish ONLY these files for the public GhostRelay package.
 
 # Core launcher/chat
-ghostchat/start.bat
-ghostchat/start_gateway.bat
-ghostchat/launcher.py
-ghostchat/ghost_chat.py
-ghostchat/ghost_chat_companion.py
-ghostchat/settings_store.py
-ghostchat/runtime_paths.py
-ghostchat/local_logger.py
-ghostchat/test_gateway.py
+start.bat
+start_gateway.bat
+launcher.py
+ghost_chat.py
+ghost_chat_companion.py
+settings_store.py
+runtime_paths.py
+local_logger.py
+test_gateway.py
 
 # Runtime dependencies and docs
-ghostchat/requirements.txt
-ghostchat/package.json
-ghostchat/README.md
-ghostchat/README.ko.md
-ghostchat/CONTRIBUTING.md
-ghostchat/VERSION
-ghostchat/CHANGELOG.md
-ghostchat/LICENSE
-ghostchat/NOTICE
-ghostchat/.gitignore
-ghostchat/.pre-commit-config.yaml
+requirements.txt
+package.json
+README.md
+README.ko.md
+CONTRIBUTING.md
+VERSION
+CHANGELOG.md
+LICENSE
+NOTICE
+.gitignore
+.pre-commit-config.yaml
 
 # Dashboard
-ghostchat/dashboard/start.bat
-ghostchat/dashboard/start.ps1
-ghostchat/dashboard/server.mjs
-ghostchat/dashboard/README.md
-ghostchat/dashboard/lib/skills-clusters.mjs
-ghostchat/dashboard/public/index.html
-ghostchat/dashboard/public/app.js
-ghostchat/dashboard/public/styles.css
+dashboard/start.bat
+dashboard/start.ps1
+dashboard/server.mjs
+dashboard/README.md
+dashboard/lib/skills-clusters.mjs
+dashboard/public/index.html
+dashboard/public/app.js
+dashboard/public/styles.css
 
 # Release strategy docs/scripts (for maintainers)
-ghostchat/release_strategy/README.md
-ghostchat/release_strategy/PUBLISH_ALLOWLIST.txt
-ghostchat/release_strategy/PUBLISH_EXCLUDE.txt
-ghostchat/release_strategy/create_public_bundle.ps1
-ghostchat/release_strategy/precommit_blocklist.py
+release_strategy/README.md
+release_strategy/PUBLISH_ALLOWLIST.txt
+release_strategy/PUBLISH_EXCLUDE.txt
+release_strategy/create_public_bundle.ps1
+release_strategy/precommit_blocklist.py

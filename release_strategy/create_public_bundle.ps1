@@ -5,11 +5,16 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$RepoRoot = Resolve-Path (Join-Path $ScriptDir "..\..")
+$ProjectRoot = Resolve-Path (Join-Path $ScriptDir "..")
 $AllowlistPath = Join-Path $ScriptDir "PUBLISH_ALLOWLIST.txt"
 
 if ([string]::IsNullOrWhiteSpace($OutputDir)) {
-  $OutputDir = Join-Path $RepoRoot "ghostchat-public-bundle"
+  $ProjectRootName = Split-Path -Leaf $ProjectRoot
+  if ($ProjectRootName -ieq "ghostchat") {
+    $OutputDir = Join-Path (Split-Path -Parent $ProjectRoot) "ghostchat-public-bundle"
+  } else {
+    $OutputDir = Join-Path $ProjectRoot "ghostchat-public-bundle"
+  }
 }
 
 if (-not (Test-Path $AllowlistPath)) {
@@ -26,7 +31,7 @@ if (Test-Path $OutputDir) {
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 foreach ($RelativePath in $Include) {
-  $SourcePath = Join-Path $RepoRoot $RelativePath
+  $SourcePath = Join-Path $ProjectRoot $RelativePath
   if (-not (Test-Path $SourcePath)) {
     Write-Warning "Missing file (skip): $RelativePath"
     continue
@@ -59,9 +64,9 @@ $GitIgnorePath = Join-Path $OutputDir ".gitignore"
 Set-Content -Path $GitIgnorePath -Value $BundleGitIgnore -Encoding UTF8
 
 $ExcludedMustNotExist = @(
-  "ghostchat/settings.json",
-  "ghostchat/logs",
-  "ghostchat/__pycache__"
+  "settings.json",
+  "logs",
+  "__pycache__"
 )
 
 foreach ($PathRel in $ExcludedMustNotExist) {

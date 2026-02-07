@@ -2,7 +2,7 @@
 
 GhostRelay OpenClaw Patch is a sidecar agent patch for integrating Ghost Chat/Companion UX with OpenClaw.
 
-- Korean README: `ghostchat/README.ko.md`
+- Korean README: `README.ko.md`
 
 ## What / Why
 
@@ -27,11 +27,11 @@ It is designed as a patch-style sidecar, not a replacement for OpenClaw.
 
 ```text
 project-root/
-  ghostchat/
+  ghostrelay/
   openclaw-main/
 ```
 
-- `ghostchat` is the sidecar app
+- `ghostrelay` (or `ghostchat`) is the sidecar app folder
 - `openclaw-main` remains an external dependency
 - this repository can be distributed independently as a patch package
 
@@ -60,7 +60,7 @@ start.bat
 
 ## Status
 
-- Version: `0.4.0-beta.1` (`ghostchat/VERSION`)
+- Version: `0.4.0-beta.1` (`VERSION`)
 - Stage: `Beta`
 - Date baseline: `2026-02-08`
 
@@ -102,23 +102,25 @@ Guardrails:
 
 ## Build Public Bundle
 
+Run this from the GhostRelay root folder (the folder containing `launcher.py`):
+
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\ghostchat\release_strategy\create_public_bundle.ps1
+powershell -ExecutionPolicy Bypass -File .\release_strategy\create_public_bundle.ps1
 ```
 
 Output:
 
-- `ghostchat-public-bundle/ghostchat`
+- `ghostchat-public-bundle` (or custom `-OutputDir`)
 
 ## Versioning (Temporary)
 
 - format: `MAJOR.MINOR.PATCH[-label]`
 - source of truth:
-  - `ghostchat/VERSION`
-  - `ghostchat/CHANGELOG.md`
+  - `VERSION`
+  - `CHANGELOG.md`
 
 ## License & Attribution
 
-- License: `MIT` (`ghostchat/LICENSE`)
+- License: `MIT` (`LICENSE`)
 - Author: Yun Jin Gyu (`akrnwkql@gmail.com`)
 - Keep `LICENSE` and `NOTICE` when redistributing

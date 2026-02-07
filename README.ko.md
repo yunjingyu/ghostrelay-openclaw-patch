@@ -25,13 +25,13 @@ GhostRelay는 OpenClaw 주변에 데스크톱 제어면(Control Plane)을 제공
 
 ```text
 project-root/
-  ghostchat/
+  ghostrelay/
   openclaw-main/
 ```
 
-- `ghostchat`: 사이드카 앱
+- `ghostrelay`(또는 `ghostchat`) 폴더가 사이드카 앱
 - `openclaw-main`: 외부 의존성
-- `ghostchat`는 별도 저장소/패키지로 배포 가능
+- 이 저장소는 별도 패치 패키지로 배포 가능
 
 ## 설치
 
@@ -58,7 +58,7 @@ start.bat
 
 ## 상태
 
-- 버전: `0.4.0-beta.1` (`ghostchat/VERSION`)
+- 버전: `0.4.0-beta.1` (`VERSION`)
 - 단계: `Beta`
 - 기준일: `2026-02-08`
 
@@ -100,23 +100,25 @@ start.bat
 
 ## 공개 번들 생성
 
+`launcher.py`가 있는 GhostRelay 루트 폴더에서 실행하세요.
+
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\ghostchat\release_strategy\create_public_bundle.ps1
+powershell -ExecutionPolicy Bypass -File .\release_strategy\create_public_bundle.ps1
 ```
 
 출력:
 
-- `ghostchat-public-bundle/ghostchat`
+- `ghostchat-public-bundle` (또는 `-OutputDir` 지정 경로)
 
 ## 버전 정책 (임시)
 
 - 형식: `MAJOR.MINOR.PATCH[-label]`
 - 기준 파일:
-  - `ghostchat/VERSION`
-  - `ghostchat/CHANGELOG.md`
+  - `VERSION`
+  - `CHANGELOG.md`
 
 ## License & Attribution
 
-- 라이선스: `MIT` (`ghostchat/LICENSE`)
+- 라이선스: `MIT` (`LICENSE`)
 - 저작자: Yun Jin Gyu (`akrnwkql@gmail.com`)
 - 재배포 시 `LICENSE`/`NOTICE` 유지
