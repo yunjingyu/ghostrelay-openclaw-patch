@@ -45,7 +45,9 @@ powershell -ExecutionPolicy Bypass -File .\ghostchat\release_strategy\create_pub
 3. Confirm `ghostchat/logs/` and `__pycache__/` are not present.
 4. Confirm no credentials or model weights are included.
 5. Confirm `LICENSE` and `NOTICE` are included in bundle.
-6. Push bundle contents to public repository.
+6. Confirm `VERSION` and `CHANGELOG.md` are included in bundle.
+7. If bilingual docs are used, confirm both `README.md` and `README.ko.md` are included.
+8. Push bundle contents to public repository.
 
 ## Optional: pre-commit safety guard
 

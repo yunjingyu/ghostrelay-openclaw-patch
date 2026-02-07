@@ -16,6 +16,9 @@ ghostchat/test_gateway.py
 ghostchat/requirements.txt
 ghostchat/package.json
 ghostchat/README.md
+ghostchat/README.ko.md
+ghostchat/VERSION
+ghostchat/CHANGELOG.md
 ghostchat/LICENSE
 ghostchat/NOTICE
 ghostchat/.gitignore
