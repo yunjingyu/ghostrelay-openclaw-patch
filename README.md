@@ -1,98 +1,29 @@
-# GhostRelay
+# GhostRelay OpenClaw Patch
 
-Desktop chat/launcher patch package that runs alongside OpenClaw.
+GhostRelay OpenClaw Patch is a sidecar agent patch for integrating Ghost Chat/Companion UX with OpenClaw.
 
 - Korean README: `ghostchat/README.ko.md`
 
-## Status
+## What / Why
 
-- Version: `0.4.0-beta.1` (`ghostchat/VERSION`)
-- Stage: `Beta`
-- Date baseline: `2026-02-08`
+GhostRelay provides a desktop control plane around OpenClaw so users can:
 
-## Validation Matrix
+- run chat and companion workflows from a single UI
+- separate profile workspaces and session contexts
+- manage gateway/model flows without editing raw config files
 
-### Confirmed (executed)
+It is designed as a patch-style sidecar, not a replacement for OpenClaw.
 
-- Core Python files compile with `python -m py_compile`
-- Public bundle script works: `release_strategy/create_public_bundle.ps1`
-- Bundle includes `LICENSE`/`NOTICE`/`.gitignore` and excludes private runtime files
-- Private GitHub repo bootstrap path was validated (create + first push)
+## Key Features
 
-### Implemented in code (manual UI verification still needed)
+- Launcher with gateway controls (`start/stop/restart`) and tray management
+- Ghost Chat with profile-scoped modes: `auto`, `chat`, `agent`
+- Companion chat for brain-prep and memory sync (`BRAIN_SUMMARY.md` path)
+- Ollama model manager (list/register/remove models)
+- Editable Persona/Memory/Session/Skills side panels
+- Public release strategy with allowlist bundle script
 
-- Launcher gateway controls (start/stop/restart)
-- Ghost Chat main window + Companion window + tray management
-- Profile-scoped workspace/config separation
-- Ollama model manager (list/register/remove)
-- Companion brain prepare/memory-sync flow with `BRAIN_SUMMARY.md`
-
-### Not complete yet
-
-- Fully automated multi-agent orchestration pipeline
-- Long-session freeze/latency regression hardening
-- Full E2E automation across UI flows
-
-## Project Layout
-
-```text
-ghostchat/
-  launcher.py
-  ghost_chat.py
-  ghost_chat_companion.py
-  settings_store.py
-  runtime_paths.py
-  local_logger.py
-  start.bat
-  start_gateway.bat
-  requirements.txt
-  package.json
-  VERSION
-  CHANGELOG.md
-  LICENSE
-  NOTICE
-  dashboard/
-  release_strategy/
-```
-
-## Install
-
-### Python
-
-```powershell
-pip install -r requirements.txt
-```
-
-### Node.js
-
-Node.js 18+ is required for dashboard features.
-
-## Run
-
-### Start Launcher
-
-```powershell
-python launcher.py
-```
-
-or
-
-```powershell
-start.bat
-```
-
-- Default: minimized + `pythonw`
-- Console mode: `start.bat --console`
-
-### Start Gateway Script Directly
-
-```powershell
-start_gateway.bat
-```
-
-## Patch-Style Integration
-
-GhostRelay is not a replacement for OpenClaw; it is a sidecar patch app.
+## Integration Model
 
 ```text
 project-root/
@@ -100,81 +31,74 @@ project-root/
   openclaw-main/
 ```
 
-- Keep `openclaw-main` as external dependency
-- Publish `ghostchat` as a separate repository/package
+- `ghostchat` is the sidecar app
+- `openclaw-main` remains an external dependency
+- this repository can be distributed independently as a patch package
 
-## Current Feature Scope
+## Install
 
-### Launcher
+```powershell
+pip install -r requirements.txt
+```
 
-- Open skills dashboard
-- Create/manage Ghost Chat windows
-- Create/manage Companion windows
-- Show gateway status and control buttons
-- Open Ollama model manager dialog
+Node.js 18+ is required for dashboard features.
 
-### Ghost Chat
+## Run
 
-- Select/apply profile
-- Conversation mode: `auto` / `chat` / `agent`
-- Edit Persona/Memory/Session/Skills in side panels
-- Local management commands (`/session`, `/skill`)
+```powershell
+python launcher.py
+```
 
-### Companion
+or:
 
-- Select brain profile
-- Brain prepare request on startup
-- Memory sync request
-- `workspace/.../memory/BRAIN_SUMMARY.md` write/update path
+```powershell
+start.bat
+```
 
-## Known Constraints
+- default: minimized + `pythonw`
+- console mode: `start.bat --console`
 
-- If an Ollama model does not support tool-calling, `agent` mode may fail
-- Some settings are safest after gateway restart
-- UI responsiveness varies by model/context/hardware
+## Status
 
-## Collaboration Model (Main Protected, PR Open)
+- Version: `0.4.0-beta.1` (`ghostchat/VERSION`)
+- Stage: `Beta`
+- Date baseline: `2026-02-08`
 
-You can protect your `main` branch while allowing collaborators to work freely on feature branches.
+### Verified
 
-Recommended GitHub settings:
+- core Python files compile with `python -m py_compile`
+- public bundle script runs successfully
+- bundle includes `LICENSE`/`NOTICE` and excludes private runtime data
+- GitHub repo bootstrap and push path validated
 
-1. Go to `Settings > Branches > Add rule` for `main`
-2. Enable:
-   - `Require a pull request before merging`
-   - `Require approvals` (1+)
-   - `Require status checks` (optional when CI is added)
-   - `Restrict who can push to matching branches` (owner only)
-3. Keep branch creation unrestricted so contributors can create branches/forks and open PRs
+### Not fully complete
 
-Result:
+- full multi-agent orchestration automation
+- broad long-session freeze/latency hardening
+- end-to-end UI automation tests
 
-- Your `main` stays protected
-- Others can branch/fork and submit PRs
-- You stay as final merge gate
+## Collaboration
 
-## Public Repository Policy
+Recommended open-source flow:
 
-### Attribution
+- keep `main` protected
+- allow branch/fork based contributions
+- accept changes through Pull Requests
 
-- License: `MIT`
-- Copyright: Yun Jin Gyu (`akrnwkql@gmail.com`)
-- Keep `LICENSE` and `NOTICE` in redistribution
+## Privacy & Public Repo Policy
 
-### Privacy
-
-Never commit:
+Do not commit:
 
 - `settings.json`, `logs/`
 - `workspace/`, `profiles/`, `memory/`
 - `.env*`, `*credentials*.json`, `*service-account*.json`, `*.pem`, `*.key`
-- `*.gguf`, `*.safetensors`, `*.onnx`
+- model assets (`*.gguf`, `*.safetensors`, `*.onnx`)
 
-Safeguards:
+Guardrails:
 
 - `.gitignore`
-- release allowlist
-- optional pre-commit hooks
+- release allowlist (`release_strategy/PUBLISH_ALLOWLIST.txt`)
+- optional pre-commit blocklist
 
 ## Build Public Bundle
 
@@ -186,22 +110,15 @@ Output:
 
 - `ghostchat-public-bundle/ghostchat`
 
-## Versioning (Temporary Policy)
+## Versioning (Temporary)
 
-- Format: `MAJOR.MINOR.PATCH[-label]`
-- Current channel: `beta`
-- Source of truth:
-  - version: `ghostchat/VERSION`
-  - changes: `ghostchat/CHANGELOG.md`
+- format: `MAJOR.MINOR.PATCH[-label]`
+- source of truth:
+  - `ghostchat/VERSION`
+  - `ghostchat/CHANGELOG.md`
 
-Temporary release rule:
+## License & Attribution
 
-- New feature: bump `MINOR`
-- Bug fix: bump `PATCH`
-- Large breaking architecture change: bump `MAJOR`
-
-## License
-
-- `MIT` (`ghostchat/LICENSE`)
-- Free to use/modify/redistribute/commercialize
-- Keep copyright/license notice
+- License: `MIT` (`ghostchat/LICENSE`)
+- Author: Yun Jin Gyu (`akrnwkql@gmail.com`)
+- Keep `LICENSE` and `NOTICE` when redistributing
