@@ -1,0 +1,32 @@
+# Exclude these files/folders from any public release.
+
+ghostchat/settings.json
+ghostchat/logs/**
+ghostchat/__pycache__/**
+ghostchat/.venv/**
+ghostchat/node_modules/**
+ghostchat/.pytest_cache/**
+
+workspace/**
+workspace/profiles/**
+model/**
+openclaw-main/**
+
+**/*.log
+**/*.tmp
+**/*.bak
+**/*.pyc
+
+# Secret and credential patterns
+**/*service-account*.json
+**/*credentials*.json
+**/*token*.json
+**/*secret*.json
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+
+# Local model assets
+**/*.gguf
+**/*.safetensors

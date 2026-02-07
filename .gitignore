@@ -1,0 +1,43 @@
+# Runtime/private local state
+settings.json
+logs/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Python local env/cache
+.venv/
+.pytest_cache/
+.mypy_cache/
+
+# Node local cache
+node_modules/
+
+# Local notes/memory/profile data (do not publish personal content)
+workspace/
+workspace/**
+profiles/
+profiles/**
+memory/
+memory/**
+
+# Local OpenClaw/OpenAI/Ollama secrets
+.env
+.env.*
+*credentials*.json
+*service-account*.json
+*secret*.json
+*token*.json
+*.pem
+*.key
+
+# Local model weights/assets
+*.gguf
+*.safetensors
+*.onnx
+
+# Temp/backup
+*.log
+*.tmp
+*.bak

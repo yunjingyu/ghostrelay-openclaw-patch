@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenClaw Skills Dashboard</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>OpenClaw Skills Dashboard</h1>
+        <p class="muted">
+          Toggle skills via OpenClaw config. Changes require gateway restart.
+        </p>
+      </div>
+      <div class="actions">
+        <div class="gateway-status">
+          <span id="gatewayStatus" class="status stopped">확인 중...</span>
+          <button id="restartGatewayBtn" style="display: none; margin-left: 10px;">게이트웨이 재시작</button>
+        </div>
+        <div class="action-buttons">
+          <button id="applyBtn" class="btn-apply" style="display: none;">적용</button>
+          <button id="cancelBtn" class="btn-cancel" style="display: none;">취소</button>
+          <button id="refreshBtn">새로고침</button>
+        </div>
+      </div>
+    </header>
+
+    <section class="summary">
+      <div class="card">
+        <div class="label">Total</div>
+        <div class="value" id="countTotal">-</div>
+      </div>
+      <div class="card" title="필수 요구사항을 모두 충족하여 실행 가능한 스킬">
+        <div class="label">자격 있음 (Eligible)</div>
+        <div class="value" id="countEligible">-</div>
+      </div>
+      <div class="card" title="사용자가 비활성화한 스킬">
+        <div class="label">비활성화 (Disabled)</div>
+        <div class="value" id="countDisabled">-</div>
+      </div>
+      <div class="card" title="허용 목록에 의해 차단된 스킬">
+        <div class="label">차단됨 (Blocked)</div>
+        <div class="value" id="countBlocked">-</div>
+      </div>
+      <div class="card" title="필수 요구사항이 부족하여 실행 불가능한 스킬">
+        <div class="label">자격 없음 (Ineligible)</div>
+        <div class="value" id="countIneligible">-</div>
+      </div>
+    </section>
+
+    <section class="tabs">
+      <button id="tabInstalled" class="tab-btn active">설치된 스킬</button>
+      <button id="tabClawHub" class="tab-btn">ClawHub</button>
+    </section>
+
+    <section class="controls" id="installedControls">
+      <input id="searchInput" type="search" placeholder="Search skills..." />
+      <label title="필수 요구사항 충족"><input type="checkbox" class="statusFilter" value="eligible" checked /> 자격 있음</label>
+      <label title="필수 요구사항 부족"><input type="checkbox" class="statusFilter" value="ineligible" checked /> 자격 없음</label>
+      <label title="사용자가 비활성화"><input type="checkbox" class="statusFilter" value="disabled" checked /> 비활성화</label>
+      <label title="허용 목록 차단"><input type="checkbox" class="statusFilter" value="blockedByAllowlist" checked /> 차단됨</label>
+    </section>
+
+    <section class="controls" id="clawhubControls" style="display: none;">
+      <input id="clawhubSearchInput" type="search" placeholder="ClawHub에서 스킬 검색 (예: calendar, postgres, twitter)..." />
+      <button id="clawhubSearchBtn">검색</button>
+      <button id="clawhubInstallBtn" style="display: none;">설치</button>
+    </section>
+
+    <section class="clusters">
+      <details>
+        <summary>Status clusters</summary>
+        <div id="clusterStatus"></div>
+      </details>
+      <details>
+        <summary>Missing requirement clusters</summary>
+        <div id="clusterMissing"></div>
+      </details>
+      <details>
+        <summary>Source clusters</summary>
+        <div id="clusterSource"></div>
+      </details>
+    </section>
+
+    <section class="table-wrap" id="installedTable">
+      <table>
+        <thead>
+          <tr>
+            <th>Skill</th>
+            <th>자격상태</th>
+            <th>Source</th>
+            <th>Missing</th>
+            <th>Description</th>
+            <th>활성화</th>
+          </tr>
+        </thead>
+        <tbody id="skillsBody"></tbody>
+      </table>
+    </section>
+
+    <section class="table-wrap" id="clawhubTable" style="display: none;">
+      <div id="clawhubInstallNotice" style="display: none; padding: 20px; background: var(--panel-2); border-radius: 10px; margin-bottom: 16px; border: 1px solid #242a37;">
+        <p style="margin: 0 0 12px; color: var(--warn); font-weight: 600;">⚠️ ClawHub CLI가 설치되지 않았습니다</p>
+        <p style="margin: 0 0 12px; color: var(--muted);">ClawHub 스킬을 사용하려면 ClawHub CLI를 설치해야 합니다:</p>
+        <code style="display: block; background: var(--bg); padding: 8px; border-radius: 4px; margin: 8px 0; color: var(--accent);">npm i -g clawhub</code>
+        <button id="installClawhubBtn" class="btn-install" style="margin-top: 8px;">ClawHub CLI 설치</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Skill</th>
+            <th>버전</th>
+            <th>설명</th>
+            <th>태그</th>
+            <th>작업</th>
+          </tr>
+        </thead>
+        <tbody id="clawhubBody"></tbody>
+      </table>
+    </section>
+
+    <div class="footer muted" id="footerNote">Ready.</div>
+    <div class="footer muted" id="clawhubInfo"></div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

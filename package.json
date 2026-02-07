@@ -1,0 +1,12 @@
+{
+  "name": "ghostchat",
+  "version": "1.0.0",
+  "description": "Ghost Chat - BRAIN 전용 채팅 인터페이스 및 툴 모음집",
+  "scripts": {
+    "dashboard": "cd dashboard && node server.mjs"
+  },
+  "keywords": ["ghostchat", "nrg", "openclaw"],
+  "author": "",
+  "license": "MIT"
+}
+

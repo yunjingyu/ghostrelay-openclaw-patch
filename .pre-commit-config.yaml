@@ -1,0 +1,16 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: ["--maxkb=10240"]
+
+  - repo: local
+    hooks:
+      - id: ghostrelay-block-private-paths
+        name: ghostrelay block private paths
+        entry: python release_strategy/precommit_blocklist.py
+        language: system
+        pass_filenames: false
